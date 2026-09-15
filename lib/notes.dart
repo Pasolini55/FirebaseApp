@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'notifications.dart';
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
@@ -50,10 +51,16 @@ class _NotesPageState extends State<NotesPage> {
     });
 
     try {
-      await _col.add({
-        'description': text,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await _col
+          .add({'description': text, 'createdAt': FieldValue.serverTimestamp()})
+          .then(
+            (note) => Notifications.show(
+              id: note.id.hashCode,
+              title: 'Nota criada',
+              body: text,
+              payload: note.id,
+            ),
+          );
 
       createController.clear();
     } catch (e) {
@@ -65,15 +72,12 @@ class _NotesPageState extends State<NotesPage> {
     }
   }
 
-  void _startInlineEdit(
-    DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+  void _startInlineEdit(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
 
     setState(() {
       editingId = doc.id;
-      inlineController.text =
-          (data?['description'] ?? '').toString();
+      inlineController.text = (data?['description'] ?? '').toString();
     });
 
     Future.microtask(() => inlineFocus.requestFocus());
@@ -91,9 +95,7 @@ class _NotesPageState extends State<NotesPage> {
     final newText = inlineController.text.trim();
 
     if (newText.isEmpty) {
-      setState(
-        () => message = 'A descrição não pode ser vazia.',
-      );
+      setState(() => message = 'A descrição não pode ser vazia.');
       return;
     }
 
@@ -114,9 +116,7 @@ class _NotesPageState extends State<NotesPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remover nota'),
-        content: const Text(
-          'Tem certeza que deseja remover esta nota?',
-        ),
+        content: const Text('Tem certeza que deseja remover esta nota?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -142,9 +142,7 @@ class _NotesPageState extends State<NotesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notas'),
-      ),
+      appBar: AppBar(title: const Text('Notas')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
@@ -156,9 +154,7 @@ class _NotesPageState extends State<NotesPage> {
                   children: [
                     TextField(
                       controller: createController,
-                      decoration: const InputDecoration(
-                        labelText: 'Descrição',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Descrição'),
                       onSubmitted: (_) => _add(),
                     ),
                     const SizedBox(height: 16),
@@ -173,8 +169,7 @@ class _NotesPageState extends State<NotesPage> {
                 ),
               ),
 
-              if (loading)
-                const CircularProgressIndicator(),
+              if (loading) const CircularProgressIndicator(),
 
               if (message != null)
                 Padding(
@@ -182,8 +177,7 @@ class _NotesPageState extends State<NotesPage> {
                   child: Text(
                     message!,
                     style: TextStyle(
-                      color:
-                          Theme.of(context).colorScheme.primary,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                 ),
@@ -191,54 +185,38 @@ class _NotesPageState extends State<NotesPage> {
               const Divider(),
 
               Expanded(
-                child: StreamBuilder<
-                    QuerySnapshot<Map<String, dynamic>>>(
+                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: _col
-                      .orderBy(
-                        'createdAt',
-                        descending: true,
-                      )
+                      .orderBy('createdAt', descending: true)
                       .snapshots(),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState ==
-                        ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
                     }
 
                     if (snapshot.hasError) {
-                      return Center(
-                        child: Text(
-                          'Erro: ${snapshot.error}',
-                        ),
-                      );
+                      return Center(child: Text('Erro: ${snapshot.error}'));
                     }
 
                     final docs = snapshot.data?.docs ?? [];
 
                     if (docs.isEmpty) {
                       return const Center(
-                        child: Text(
-                          'Nenhuma nota cadastrada.',
-                        ),
+                        child: Text('Nenhuma nota cadastrada.'),
                       );
                     }
 
                     return ListView.separated(
                       itemCount: docs.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 0),
+                      separatorBuilder: (_, _) => const Divider(height: 0),
                       itemBuilder: (context, i) {
                         final doc = docs[i];
                         final data = doc.data();
-                        final isEditing =
-                            editingId == doc.id;
+                        final isEditing = editingId == doc.id;
 
                         if (isEditing) {
                           return Padding(
-                            padding:
-                                const EdgeInsets.symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 6,
                             ),
@@ -246,43 +224,28 @@ class _NotesPageState extends State<NotesPage> {
                               children: [
                                 Expanded(
                                   child: TextField(
-                                    controller:
-                                        inlineController,
+                                    controller: inlineController,
                                     focusNode: inlineFocus,
                                     autofocus: true,
-                                    decoration:
-                                        const InputDecoration(
-                                      labelText:
-                                          'Editar descrição',
+                                    decoration: const InputDecoration(
+                                      labelText: 'Editar descrição',
                                       isDense: true,
-                                      border:
-                                          OutlineInputBorder(),
+                                      border: OutlineInputBorder(),
                                     ),
                                     onSubmitted: (_) =>
-                                        _commitInlineEdit(
-                                      doc.id,
-                                    ),
+                                        _commitInlineEdit(doc.id),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
                                   tooltip: 'Salvar',
-                                  onPressed: () =>
-                                      _commitInlineEdit(
-                                    doc.id,
-                                  ),
-                                  icon: const Icon(
-                                    Icons
-                                        .check_circle_outline,
-                                  ),
+                                  onPressed: () => _commitInlineEdit(doc.id),
+                                  icon: const Icon(Icons.check_circle_outline),
                                 ),
                                 IconButton(
                                   tooltip: 'Cancelar',
-                                  onPressed:
-                                      _cancelInlineEdit,
-                                  icon: const Icon(
-                                    Icons.close,
-                                  ),
+                                  onPressed: _cancelInlineEdit,
+                                  icon: const Icon(Icons.close),
                                 ),
                               ],
                             ),
@@ -290,19 +253,12 @@ class _NotesPageState extends State<NotesPage> {
                         }
 
                         return ListTile(
-                          title: Text(
-                            (data['description'] ?? '')
-                                .toString(),
-                          ),
-                          onTap: () =>
-                              _startInlineEdit(doc),
+                          title: Text((data['description'] ?? '').toString()),
+                          onTap: () => _startInlineEdit(doc),
                           trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                            ),
+                            icon: const Icon(Icons.delete_outline),
                             tooltip: 'Remover',
-                            onPressed: () =>
-                                _remove(doc.id),
+                            onPressed: () => _remove(doc.id),
                           ),
                         );
                       },

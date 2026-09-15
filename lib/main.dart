@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'firebase_options.dart';
 import 'login.dart';
 import 'welcome.dart';
 import 'notes.dart';
+import 'notifications.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  await Notifications.init();
+  await Permission.notification.request();
 
   runApp(const MyApp());
 }
@@ -40,17 +43,13 @@ class AuthGate extends StatelessWidget {
       builder: (_, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
         final user = snap.data;
 
-        return user == null
-            ? const LoginPage()
-            : const HomePage();
+        return user == null ? const LoginPage() : const HomePage();
       },
     );
   }
@@ -64,20 +63,14 @@ class HomePage extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Home"),
-      ),
+      appBar: AppBar(title: const Text("Home")),
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
             UserAccountsDrawerHeader(
-              accountName: Text(
-                user?.displayName ?? "Usuário",
-              ),
-              accountEmail: Text(
-                user?.email ?? "",
-              ),
+              accountName: Text(user?.displayName ?? "Usuário"),
+              accountEmail: Text(user?.email ?? ""),
               currentAccountPicture: const CircleAvatar(
                 child: Icon(Icons.person),
               ),
@@ -88,9 +81,7 @@ class HomePage extends StatelessWidget {
               onTap: () async {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotesPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const NotesPage()),
                 );
               },
             ),
@@ -104,9 +95,7 @@ class HomePage extends StatelessWidget {
           ],
         ),
       ),
-      body: const Center(
-        child: WelcomeMessage(),
-      ),
+      body: const Center(child: WelcomeMessage()),
     );
   }
 }
