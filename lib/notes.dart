@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:latlong2/latlong.dart' as ll;
+
 import 'notifications.dart';
+import 'maps.dart';
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
@@ -19,7 +22,6 @@ class _NotesPageState extends State<NotesPage> {
 
   bool loading = false;
   String? message;
-
   CollectionReference<Map<String, dynamic>> get _col {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -49,10 +51,12 @@ class _NotesPageState extends State<NotesPage> {
       loading = true;
       message = null;
     });
-
     try {
       await _col
-          .add({'description': text, 'createdAt': FieldValue.serverTimestamp()})
+          .add({
+            'description': text,
+            'createdAt': FieldValue.serverTimestamp(),
+          })
           .then(
             (note) => Notifications.show(
               id: note.id.hashCode,
@@ -66,9 +70,7 @@ class _NotesPageState extends State<NotesPage> {
     } catch (e) {
       setState(() => message = 'Erro: $e');
     } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -104,7 +106,6 @@ class _NotesPageState extends State<NotesPage> {
         'description': newText,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-
       _cancelInlineEdit();
     } catch (e) {
       setState(() => message = 'Erro ao atualizar: $e');
@@ -132,11 +133,43 @@ class _NotesPageState extends State<NotesPage> {
 
     if (ok == true) {
       await _col.doc(docId).delete();
-
-      if (editingId == docId) {
-        _cancelInlineEdit();
-      }
+      if (editingId == docId) _cancelInlineEdit();
     }
+  }
+
+  void _openMapViewer(
+    DocumentReference<Map<String, dynamic>> noteRef,
+    Map<String, dynamic> data,
+  ) {
+    GeoPoint? gp;
+    final pos = data['position'];
+
+    if (pos is GeoPoint) {
+      gp = pos;
+    } else if (pos is Map && pos['geopoint'] is GeoPoint) {
+      gp = pos['geopoint'] as GeoPoint;
+    }
+
+    final ll.LatLng? initialLatLng = gp == null
+        ? null
+        : ll.LatLng(gp.latitude, gp.longitude);
+
+    final double? initialZoom = (data['zoom'] as num?)?.toDouble();
+    final String? initialAddress =
+        (data['address'] as String?)?.trim().isEmpty == true
+        ? null
+        : data['address']?.toString();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapViewerEditorPage(
+          noteRef: noteRef,
+          initialLatLng: initialLatLng,
+          initialZoom: initialZoom,
+          initialAddress: initialAddress,
+        ),
+      ),
+    );
   }
 
   @override
@@ -154,7 +187,9 @@ class _NotesPageState extends State<NotesPage> {
                   children: [
                     TextField(
                       controller: createController,
-                      decoration: const InputDecoration(labelText: 'Descrição'),
+                      decoration: const InputDecoration(
+                        labelText: 'Descrição',
+                      ),
                       onSubmitted: (_) => _add(),
                     ),
                     const SizedBox(height: 16),
@@ -168,9 +203,7 @@ class _NotesPageState extends State<NotesPage> {
                   ],
                 ),
               ),
-
               if (loading) const CircularProgressIndicator(),
-
               if (message != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -181,9 +214,7 @@ class _NotesPageState extends State<NotesPage> {
                     ),
                   ),
                 ),
-
               const Divider(),
-
               Expanded(
                 child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: _col
@@ -191,11 +222,15 @@ class _NotesPageState extends State<NotesPage> {
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
                     }
 
                     if (snapshot.hasError) {
-                      return Center(child: Text('Erro: ${snapshot.error}'));
+                      return Center(
+                        child: Text('Erro: ${snapshot.error}'),
+                      );
                     }
 
                     final docs = snapshot.data?.docs ?? [];
@@ -205,7 +240,6 @@ class _NotesPageState extends State<NotesPage> {
                         child: Text('Nenhuma nota cadastrada.'),
                       );
                     }
-
                     return ListView.separated(
                       itemCount: docs.length,
                       separatorBuilder: (_, _) => const Divider(height: 0),
@@ -213,6 +247,7 @@ class _NotesPageState extends State<NotesPage> {
                         final doc = docs[i];
                         final data = doc.data();
                         final isEditing = editingId == doc.id;
+                        final address = (data['address'] ?? '').toString();
 
                         if (isEditing) {
                           return Padding(
@@ -240,7 +275,9 @@ class _NotesPageState extends State<NotesPage> {
                                 IconButton(
                                   tooltip: 'Salvar',
                                   onPressed: () => _commitInlineEdit(doc.id),
-                                  icon: const Icon(Icons.check_circle_outline),
+                                  icon: const Icon(
+                                    Icons.check_circle_outline,
+                                  ),
                                 ),
                                 IconButton(
                                   tooltip: 'Cancelar',
@@ -253,12 +290,32 @@ class _NotesPageState extends State<NotesPage> {
                         }
 
                         return ListTile(
-                          title: Text((data['description'] ?? '').toString()),
+                          title: Text(
+                            (data['description'] ?? '').toString(),
+                          ),
+                          subtitle: address.isEmpty
+                              ? null
+                              : Text(
+                                  address,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                           onTap: () => _startInlineEdit(doc),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: 'Remover',
-                            onPressed: () => _remove(doc.id),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.map_rounded),
+                                tooltip: 'Mapa',
+                                onPressed: () =>
+                                    _openMapViewer(_col.doc(doc.id), data),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                tooltip: 'Remover',
+                                onPressed: () => _remove(doc.id),
+                              ),
+                            ],
                           ),
                         );
                       },
