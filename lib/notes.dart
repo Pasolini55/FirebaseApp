@@ -22,9 +22,9 @@ class _NotesPageState extends State<NotesPage> {
 
   bool loading = false;
   String? message;
+
   CollectionReference<Map<String, dynamic>> get _col {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-
     return FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
@@ -41,7 +41,6 @@ class _NotesPageState extends State<NotesPage> {
 
   Future<void> _add() async {
     final text = createController.text.trim();
-
     if (text.isEmpty) {
       setState(() => message = 'Preencha a descrição.');
       return;
@@ -51,12 +50,10 @@ class _NotesPageState extends State<NotesPage> {
       loading = true;
       message = null;
     });
+
     try {
       await _col
-          .add({
-            'description': text,
-            'createdAt': FieldValue.serverTimestamp(),
-          })
+          .add({'description': text, 'createdAt': FieldValue.serverTimestamp()})
           .then(
             (note) => Notifications.show(
               id: note.id.hashCode,
@@ -65,7 +62,6 @@ class _NotesPageState extends State<NotesPage> {
               payload: note.id,
             ),
           );
-
       createController.clear();
     } catch (e) {
       setState(() => message = 'Erro: $e');
@@ -76,12 +72,10 @@ class _NotesPageState extends State<NotesPage> {
 
   void _startInlineEdit(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
-
     setState(() {
       editingId = doc.id;
       inlineController.text = (data?['description'] ?? '').toString();
     });
-
     Future.microtask(() => inlineFocus.requestFocus());
   }
 
@@ -95,7 +89,6 @@ class _NotesPageState extends State<NotesPage> {
 
   Future<void> _commitInlineEdit(String docId) async {
     final newText = inlineController.text.trim();
-
     if (newText.isEmpty) {
       setState(() => message = 'A descrição não pode ser vazia.');
       return;
@@ -143,22 +136,101 @@ class _NotesPageState extends State<NotesPage> {
   ) {
     GeoPoint? gp;
     final pos = data['position'];
-
     if (pos is GeoPoint) {
       gp = pos;
     } else if (pos is Map && pos['geopoint'] is GeoPoint) {
       gp = pos['geopoint'] as GeoPoint;
     }
 
-    final ll.LatLng? initialLatLng = gp == null
+    ll.LatLng? initialLatLng = gp == null
         ? null
         : ll.LatLng(gp.latitude, gp.longitude);
-
     final double? initialZoom = (data['zoom'] as num?)?.toDouble();
-    final String? initialAddress =
+    String? initialAddress =
         (data['address'] as String?)?.trim().isEmpty == true
         ? null
         : data['address']?.toString();
+
+    ll.LatLng? finalLatLng;
+    String? finalAddress;
+
+    final init = data['initial'];
+    if (init is Map) {
+      final ipos = init['position'];
+      GeoPoint? igp;
+      if (ipos is GeoPoint) {
+        igp = ipos;
+      } else if (ipos is Map && ipos['geopoint'] is GeoPoint) {
+        igp = ipos['geopoint'] as GeoPoint;
+      }
+      if (igp != null) {
+        initialLatLng = ll.LatLng(igp.latitude, igp.longitude);
+      }
+      final ia = (init['address'] as String?)?.trim();
+      if (ia != null && ia.isNotEmpty) initialAddress = ia;
+    }
+
+    final fin = data['final'];
+    if (fin is Map) {
+      final fpos = fin['position'];
+      GeoPoint? fgp;
+      if (fpos is GeoPoint) {
+        fgp = fpos;
+      } else if (fpos is Map && fpos['geopoint'] is GeoPoint) {
+        fgp = fpos['geopoint'] as GeoPoint;
+      }
+      if (fgp != null) {
+        finalLatLng = ll.LatLng(fgp.latitude, fgp.longitude);
+      }
+      final fa = (fin['address'] as String?)?.trim();
+      if (fa != null && fa.isNotEmpty) finalAddress = fa;
+    }
+
+    final legacyRoute = data['route'];
+    if (legacyRoute is Map) {
+      final origin = legacyRoute['origin'];
+      if (origin is Map) {
+        final oPos = origin['position'];
+        GeoPoint? ogp;
+        if (oPos is GeoPoint) {
+          ogp = oPos;
+        } else if (oPos is Map && oPos['geopoint'] is GeoPoint) {
+          ogp = oPos['geopoint'] as GeoPoint;
+        }
+        if (ogp != null) {
+          initialLatLng = ll.LatLng(ogp.latitude, ogp.longitude);
+        }
+        final oa = (origin['address'] as String?)?.trim();
+        if (oa != null && oa.isNotEmpty) initialAddress = oa;
+      }
+
+      final dest = legacyRoute['destination'];
+      if (dest is Map) {
+        final dPos = dest['position'];
+        GeoPoint? dgp;
+        if (dPos is GeoPoint) {
+          dgp = dPos;
+        } else if (dPos is Map && dPos['geopoint'] is GeoPoint) {
+          dgp = dPos['geopoint'] as GeoPoint;
+        }
+        if (dgp != null) {
+          finalLatLng = ll.LatLng(dgp.latitude, dgp.longitude);
+        }
+        final da = (dest['address'] as String?)?.trim();
+        if (da != null && da.isNotEmpty) finalAddress = da;
+      }
+    }
+
+    String? polyline6 = (data['polyline6'] as String?)?.trim();
+    double? distanceM = (data['distanceM'] as num?)?.toDouble();
+    double? durationS = (data['durationS'] as num?)?.toDouble();
+
+    if ((polyline6 == null || polyline6.isEmpty) && legacyRoute is Map) {
+      polyline6 = (legacyRoute['polyline6'] as String?)?.trim();
+      distanceM ??= (legacyRoute['distanceM'] as num?)?.toDouble();
+      durationS ??= (legacyRoute['durationS'] as num?)?.toDouble();
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -167,9 +239,74 @@ class _NotesPageState extends State<NotesPage> {
           initialLatLng: initialLatLng,
           initialZoom: initialZoom,
           initialAddress: initialAddress,
+          finalLatLng: finalLatLng,
+          finalAddress: finalAddress,
+          initialPolyline6: polyline6,
+          initialDistanceM: distanceM,
+          initialDurationS: durationS,
         ),
       ),
     );
+  }
+
+  String? _routeSubtitle(Map<String, dynamic> data) {
+    String? initialAddress;
+    String? finalAddress;
+    double? distanceM = (data['distanceM'] as num?)?.toDouble();
+    double? durationS = (data['durationS'] as num?)?.toDouble();
+
+    final init = data['initial'];
+    if (init is Map) {
+      final address = (init['address'] as String?)?.trim();
+      if (address != null && address.isNotEmpty) initialAddress = address;
+    }
+
+    final fin = data['final'];
+    if (fin is Map) {
+      final address = (fin['address'] as String?)?.trim();
+      if (address != null && address.isNotEmpty) finalAddress = address;
+    }
+
+    if (initialAddress == null || finalAddress == null) {
+      final route = data['route'];
+      if (route is Map) {
+        final origin = route['origin'];
+        if (origin is Map) {
+          final address = (origin['address'] as String?)?.trim();
+          if (address != null && address.isNotEmpty) {
+            initialAddress = address;
+          }
+        }
+
+        final dest = route['destination'];
+        if (dest is Map) {
+          final address = (dest['address'] as String?)?.trim();
+          if (address != null && address.isNotEmpty) {
+            finalAddress = address;
+          }
+        }
+
+        distanceM ??= (route['distanceM'] as num?)?.toDouble();
+        durationS ??= (route['durationS'] as num?)?.toDouble();
+      }
+    }
+
+    if (initialAddress != null && finalAddress != null) {
+      final parts = <String>['$initialAddress → $finalAddress'];
+      if (distanceM != null) {
+        parts.add('${(distanceM / 1000).toStringAsFixed(2)} km');
+      }
+      if (durationS != null) {
+        parts.add('${(durationS / 60).toStringAsFixed(0)} min');
+      }
+      return parts.join(' · ');
+    }
+
+    initialAddress ??= (data['address'] as String?)?.trim();
+    if (initialAddress != null && initialAddress.isNotEmpty) {
+      return initialAddress;
+    }
+    return null;
   }
 
   @override
@@ -187,9 +324,7 @@ class _NotesPageState extends State<NotesPage> {
                   children: [
                     TextField(
                       controller: createController,
-                      decoration: const InputDecoration(
-                        labelText: 'Descrição',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Descrição'),
                       onSubmitted: (_) => _add(),
                     ),
                     const SizedBox(height: 16),
@@ -222,24 +357,20 @@ class _NotesPageState extends State<NotesPage> {
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
+                      return const Center(child: CircularProgressIndicator());
                     }
 
                     if (snapshot.hasError) {
-                      return Center(
-                        child: Text('Erro: ${snapshot.error}'),
-                      );
+                      return Center(child: Text('Erro: ${snapshot.error}'));
                     }
 
                     final docs = snapshot.data?.docs ?? [];
-
                     if (docs.isEmpty) {
                       return const Center(
                         child: Text('Nenhuma nota cadastrada.'),
                       );
                     }
+
                     return ListView.separated(
                       itemCount: docs.length,
                       separatorBuilder: (_, _) => const Divider(height: 0),
@@ -247,7 +378,6 @@ class _NotesPageState extends State<NotesPage> {
                         final doc = docs[i];
                         final data = doc.data();
                         final isEditing = editingId == doc.id;
-                        final address = (data['address'] ?? '').toString();
 
                         if (isEditing) {
                           return Padding(
@@ -275,9 +405,7 @@ class _NotesPageState extends State<NotesPage> {
                                 IconButton(
                                   tooltip: 'Salvar',
                                   onPressed: () => _commitInlineEdit(doc.id),
-                                  icon: const Icon(
-                                    Icons.check_circle_outline,
-                                  ),
+                                  icon: const Icon(Icons.check_circle_outline),
                                 ),
                                 IconButton(
                                   tooltip: 'Cancelar',
@@ -289,14 +417,13 @@ class _NotesPageState extends State<NotesPage> {
                           );
                         }
 
+                        final subtitleText = _routeSubtitle(data);
                         return ListTile(
-                          title: Text(
-                            (data['description'] ?? '').toString(),
-                          ),
-                          subtitle: address.isEmpty
+                          title: Text((data['description'] ?? '').toString()),
+                          subtitle: subtitleText == null
                               ? null
                               : Text(
-                                  address,
+                                  subtitleText,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
